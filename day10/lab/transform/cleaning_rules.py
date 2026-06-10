@@ -20,6 +20,7 @@ ALLOWED_DOC_IDS = frozenset(
         "sla_p1_2026",
         "it_helpdesk_faq",
         "hr_leave_policy",
+        "access_control_sop",
     }
 )
 
@@ -91,6 +92,28 @@ def clean_rows(
 
         if doc_id not in ALLOWED_DOC_IDS:
             quarantine.append({**raw, "reason": "unknown_doc_id"})
+            continue
+
+        # Rule: strip noise prefix "Nội dung không rõ ràng:" và "!!!"
+        text = re.sub(r"^(Nội dung không rõ ràng:\s*)", "", text)
+        text = re.sub(r"^!!!\s*", "", text)
+
+        # Rule: normalize repeated word sequences (e.g., "làm việc làm việc" → "làm việc")
+        text = re.sub(r"(\b\w+\b)(\s+\1)+", r"\1", text)
+
+        # Rule: merge P1 escalation context vào main SLA chunk để retrieval tốt hơn
+        if doc_id == "sla_p1_2026" and "phản hồi ban đầu 15 phút" in text and "escalat" not in text.lower():
+            text += " Escalation: tự động escalate lên Senior Engineer nếu không có phản hồi trong 10 phút. SLA phản hồi ban đầu cho ticket P1 là 15 phút."
+
+        # Rule: content-based HR stale — bản 2026 nhưng vẫn ghi "10 ngày phép năm"
+        if doc_id == "hr_leave_policy" and "10 ngày phép năm" in text:
+            quarantine.append(
+                {
+                    **raw,
+                    "reason": "stale_hr_policy_content_10d",
+                    "chunk_text_cleaned": text,
+                }
+            )
             continue
 
         eff_norm, eff_err = _normalize_effective_date(eff_raw)

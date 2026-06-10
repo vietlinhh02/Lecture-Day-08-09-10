@@ -112,5 +112,35 @@ def run_expectations(cleaned_rows: List[Dict[str, Any]]) -> Tuple[List[Expectati
         )
     )
 
+    # E7: tất cả 5 doc type bắt buộc phải có trong cleaned (phát hiện pipeline bỏ sót nguồn)
+    required_types = {"policy_refund_v4", "sla_p1_2026", "it_helpdesk_faq", "hr_leave_policy", "access_control_sop"}
+    present_types = {r.get("doc_id") for r in cleaned_rows if r.get("doc_id")}
+    missing_types = required_types - present_types
+    ok7 = len(missing_types) == 0
+    results.append(
+        ExpectationResult(
+            "required_doc_types_present",
+            ok7,
+            "halt",
+            f"missing={sorted(missing_types) if missing_types else 'none'}",
+        )
+    )
+
+    # E8: không còn noise prefix "Nội dung không rõ ràng:" hoặc "!!!" trong cleaned
+    noise_prefix_rows = [
+        r
+        for r in cleaned_rows
+        if re.match(r"^(Nội dung không rõ ràng:|!!!)", (r.get("chunk_text") or "").strip())
+    ]
+    ok8 = len(noise_prefix_rows) == 0
+    results.append(
+        ExpectationResult(
+            "no_noise_prefix",
+            ok8,
+            "warn",
+            f"noise_prefix_rows={len(noise_prefix_rows)}",
+        )
+    )
+
     halt = any(not r.passed and r.severity == "halt" for r in results)
     return results, halt
